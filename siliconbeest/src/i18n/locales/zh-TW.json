@@ -172,7 +172,8 @@
     "local_timeline": "本站時間軸",
     "federated_timeline": "聯邦時間軸",
     "main_navigation": "主導覽",
-    "mobile_navigation": "行動版導覽"
+    "mobile_navigation": "行動版導覽",
+    "social_timeline": "社交時間軸"
   },
   "explore": {
     "trending": "熱門",
@@ -710,11 +711,13 @@
       "terms_of_service": "服務條款",
       "terms_of_service_desc": "以 Markdown 撰寫服務條款。",
       "privacy_policy": "隱私權政策",
-      "privacy_policy_desc": "以 Markdown 撰寫隱私權政策。"
+      "privacy_policy_desc": "以 Markdown 撰寫隱私權政策。",
+      "accent_color": "Deck 強調色"
     },
     "registration_message_help": "此訊息將顯示在註冊頁面上。",
     "vapid_public_key_placeholder": "Base64url 編碼的 P-256 公鑰（65 位元組）",
-    "vapid_private_key_placeholder": "Base64url 編碼的 P-256 私鑰（32 位元組）"
+    "vapid_private_key_placeholder": "Base64url 編碼的 P-256 私鑰（32 位元組）",
+    "accent_color_hint": "套用於所有訪客的 Deck 介面(按鈕、作用中狀態、即時指示器)。"
   },
   "legal": {
     "terms_of_service": "服務條款",
@@ -955,7 +958,8 @@
   "design": {
     "classicBanner": "您正在瀏覽經典版介面",
     "switchToNew": "試試全新設計",
-    "backToClassic": "經典版介面"
+    "backToClassic": "經典版介面",
+    "auroraBanner": "您正在瀏覽 Aurora 設計。"
   },
   "setup": {
     "subtitle": "建立第一個管理員帳號。",
@@ -973,5 +977,46 @@
     "password_required": "請輸入密碼。",
     "password_too_short": "密碼長度至少需 8 個字元。",
     "password_mismatch": "兩次輸入的密碼不一致。"
+  },
+  "deck": {
+    "col_home": "home",
+    "col_local": "local",
+    "col_federated": "federated",
+    "scope_following": "追蹤中",
+    "scope_federated": "已知網路",
+    "live": "LIVE",
+    "streaming": "即時",
+    "note": "發文",
+    "columns_empty": "所有欄位皆已隱藏。請從左側欄重新開啟時間軸。",
+    "toggle_column": "切換 {name} 欄位",
+    "design_aurora": "Aurora 介面",
+    "design_classic": "經典介面",
+    "deck": "面板",
+    "columns_short": "欄位",
+    "columns_title": "面板欄位",
+    "col_notifications": "alerts",
+    "move_up": "上移",
+    "move_down": "下移",
+    "drag_to_reorder": "拖曳以重新排序",
+    "live_toggle": "切換即時更新",
+    "react": "用表情符號回應",
+    "unboost": "取消轉發",
+    "unfavourite": "取消最愛",
+    "remote_reaction_hint": "來自其他伺服器的表情符號",
+    "col_search": "search",
+    "col_requests": "follow requests",
+    "unbookmark": "移除書籤",
+    "col_social": "social",
+    "scope_social": "首頁 + 本站",
+    "scope_alerts": "動態",
+    "scope_requests": "追蹤請求",
+    "scope_search": "全部",
+    "nav_home": "首頁",
+    "nav_social": "社交",
+    "nav_local": "本站",
+    "nav_federated": "跨站",
+    "nav_alerts": "通知",
+    "nav_requests": "請求",
+    "section_timelines": "時間軸"
   }
 }
