@@ -7,6 +7,7 @@ import { registerUser, getOrCreateInternalApp, createAccessToken, updateSignInTr
 import { createDefaultImages } from '../../../utils/defaultImages';
 import { sanitizeLocale } from '../../../utils/locales';
 import { setAuthTokenCookie } from '../../../utils/authCookie';
+import { getInternalSessionOAuthScopes } from '../../../../../../packages/shared/permissions';
 
 const SETUP_LOCK_KEY = 'setup_admin_seeded';
 
@@ -131,10 +132,14 @@ app.post('/', async (c) => {
              approved = 1,
              confirmed_at = ?1,
              confirmation_token = NULL,
+             registration_state = 'active',
              locale = ?2,
              updated_at = ?1
          WHERE id = ?3`,
       ).bind(now, locale, user.id),
+      env.DB.prepare(
+        'UPDATE accounts SET discoverable = 1, updated_at = ?1 WHERE id = ?2',
+      ).bind(now, account.id),
       env.DB.prepare(
         'UPDATE settings SET value = ?1, updated_at = ?2 WHERE key = ?3',
       ).bind(user.id, now, SETUP_LOCK_KEY),
@@ -143,11 +148,13 @@ app.post('/', async (c) => {
     const appRecord = await getOrCreateInternalApp();
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || '';
     const userAgent = c.req.header('User-Agent') || '';
+    const scopes = getInternalSessionOAuthScopes('admin');
     const { tokenValue, createdAt } = await createAccessToken(appRecord.id, user.id, {
       ip,
       userAgent,
       email,
       locale,
+      scopes,
     });
     await updateSignInTracking(user.id, ip);
 
@@ -156,7 +163,7 @@ app.post('/', async (c) => {
     return c.json({
       access_token: tokenValue,
       token_type: 'Bearer',
-      scope: 'read write follow push',
+      scope: scopes,
       created_at: Math.floor(new Date(createdAt).getTime() / 1000),
     });
   } catch (error) {
