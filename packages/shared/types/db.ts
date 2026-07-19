@@ -213,11 +213,30 @@ export type MediaAttachmentRow = {
   readonly file_size: number;
   readonly thumbnail_key: string | null;
   readonly remote_url: string | null;
-  readonly description: string;
+  /** NULL is used transiently while automatic ALT generation is pending. */
+  readonly description: string | null;
   readonly blurhash: string | null;
   readonly width: number | null;
   readonly height: number | null;
   readonly type: string;
+  readonly created_at: string;
+  readonly updated_at: string;
+};
+
+export type AdvertisementFormat = 'text' | 'image' | 'text_image' | 'status';
+
+export type AdvertisementRow = {
+  readonly id: string;
+  readonly format: AdvertisementFormat;
+  readonly text: string | null;
+  readonly image_media_attachment_id: string | null;
+  readonly image_alt_text: string;
+  readonly status_id: string | null;
+  readonly link_url: string | null;
+  readonly enabled: number;
+  readonly starts_at: string | null;
+  readonly ends_at: string | null;
+  readonly created_by_account_id: string;
   readonly created_at: string;
   readonly updated_at: string;
 };
@@ -272,6 +291,15 @@ export type FavouriteRow = {
   readonly status_id: string;
   readonly uri: string | null;
   readonly created_at: string;
+};
+
+export type RecommendationActivityKind = 'posted' | 'reposted' | 'liked';
+
+export type RecommendationActivityRow = {
+  readonly account_id: string;
+  readonly activity_kind: RecommendationActivityKind;
+  readonly status_id: string;
+  readonly occurred_at: string;
 };
 
 export type BlockRow = {
