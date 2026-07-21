@@ -371,6 +371,42 @@ if [[ -n "$WORKERS_AI_BINDING_BLOCK" ]]; then
   WORKERS_AI_BINDING_BLOCK+=$'\n'
 fi
 
+# --- Optional Workers Observability drains (main worker only) ---
+# Comma-separated destination names created beforehand in the Cloudflare
+# dashboard (Workers & Pages → Observability → Destinations), e.g. Sentry
+# OTLP log/trace drains. Empty = no destinations emitted.
+CURRENT_OBSERVABILITY_LOGS_DESTINATIONS="${OBSERVABILITY_LOGS_DESTINATIONS:-}"
+CURRENT_OBSERVABILITY_TRACES_DESTINATIONS="${OBSERVABILITY_TRACES_DESTINATIONS:-}"
+
+build_destinations_entry() {
+  local variable_name="$1"
+  local raw="$2"
+  local json=""
+  local name
+  DESTINATIONS_ENTRY=""
+  local IFS=','
+  for name in $raw; do
+    name="${name#"${name%%[![:space:]]*}"}"
+    name="${name%"${name##*[![:space:]]}"}"
+    if [[ -z "$name" ]]; then
+      continue
+    fi
+    if [[ ! "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+      error "$variable_name entries must be alphanumeric destination names (dash/underscore allowed), got: $name"
+      exit 1
+    fi
+    json+="${json:+, }\"${name}\""
+  done
+  if [[ -n "$json" ]]; then
+    DESTINATIONS_ENTRY=$',\n\t    "destinations": ['"$json"']'
+  fi
+}
+
+build_destinations_entry OBSERVABILITY_LOGS_DESTINATIONS "$CURRENT_OBSERVABILITY_LOGS_DESTINATIONS"
+OBSERVABILITY_LOGS_DESTINATIONS_ENTRY="$DESTINATIONS_ENTRY"
+build_destinations_entry OBSERVABILITY_TRACES_DESTINATIONS "$CURRENT_OBSERVABILITY_TRACES_DESTINATIONS"
+OBSERVABILITY_TRACES_DESTINATIONS_ENTRY="$DESTINATIONS_ENTRY"
+
 # Preserve the checked-in main Wrangler formatting byte-for-byte. Keeping the
 # mixed legacy indent in a value avoids introducing whitespace errors here.
 WRANGLER_COMPATIBILITY_FLAGS_INDENT=$'  \t'
@@ -426,6 +462,44 @@ if [[ "$CURRENT_SKIP_SIGNATURE_VERIFICATION" != "true" \
   exit 1
 fi
 
+# --- Debug Logging Override ---
+# Preserve the checked-in DEBUG var when regenerating wrangler.jsonc; the
+# main worker is canonical. The ambient shell DEBUG variable is deliberately
+# ignored (too many tools set it), unlike SKIP_SIGNATURE_VERIFICATION above.
+read_debug_override() {
+  local config_file="$1"
+  if [[ ! -f "$config_file" ]]; then
+    return
+  fi
+
+  sed '/^[[:space:]]*\/\//d' "$config_file" | node -e "
+    try {
+      const d = JSON.parse(require('fs').readFileSync('/dev/stdin', 'utf8'));
+      const value = d.vars?.DEBUG;
+      if (value !== undefined) {
+        console.log(typeof value === 'boolean' ? String(value) : 'INVALID');
+      }
+    } catch (e) {}
+  " 2>/dev/null || true
+}
+
+MAIN_DEBUG=$(read_debug_override "$MAIN_DIR/wrangler.jsonc")
+CONSUMER_DEBUG=$(read_debug_override "$CONSUMER_DIR/wrangler.jsonc")
+
+if [[ "$MAIN_DEBUG" == "INVALID" ]]; then
+  error "Main wrangler DEBUG must be boolean true or false"
+  exit 1
+fi
+if [[ "$CONSUMER_DEBUG" == "INVALID" ]]; then
+  error "Queue consumer wrangler DEBUG must be boolean true or false"
+  exit 1
+fi
+if [[ -n "$MAIN_DEBUG" && -n "$CONSUMER_DEBUG" && "$MAIN_DEBUG" != "$CONSUMER_DEBUG" ]]; then
+  warn "DEBUG overrides differ; the main worker value is canonical"
+fi
+
+CURRENT_DEBUG="${MAIN_DEBUG:-false}"
+
 # ============================================================================
 # Summary
 # ============================================================================
@@ -451,6 +525,8 @@ echo "  AI recommend:    ${CURRENT_WORKERS_AI_RECOMMENDATION_MODEL}"
 echo "  AI translation:  ${CURRENT_WORKERS_AI_TRANSLATION_MODEL}"
 echo "  AI image caption: ${CURRENT_WORKERS_AI_IMAGE_CAPTION_MODEL}"
 echo "  AI rate limits:   ${CURRENT_WORKERS_AI_RATE_LIMITS}"
+echo "  Obs logs drains:   ${CURRENT_OBSERVABILITY_LOGS_DESTINATIONS:-none}"
+echo "  Obs traces drains: ${CURRENT_OBSERVABILITY_TRACES_DESTINATIONS:-none}"
 echo "  AI rate-limit levels: ${CURRENT_WORKERS_AI_RECOMMENDATION_RATE_LIMIT}/${CURRENT_WORKERS_AI_RECOMMENDATION_RATE_LIMIT_PERIOD_SECONDS}s, ${CURRENT_WORKERS_AI_TRANSLATION_RATE_LIMIT}/${CURRENT_WORKERS_AI_TRANSLATION_RATE_LIMIT_PERIOD_SECONDS}s, ${CURRENT_WORKERS_AI_IMAGE_DESCRIPTION_RATE_LIMIT}/${CURRENT_WORKERS_AI_IMAGE_DESCRIPTION_RATE_LIMIT_PERIOD_SECONDS}s"
 if [[ "$CURRENT_WORKERS_AI_ENABLED" == "true" \
    && "$CURRENT_WORKERS_AI_RATE_LIMITS" == "true" ]]; then
@@ -504,12 +580,12 @@ cat > "$MAIN_DIR/wrangler.jsonc" << WRANGLER_EOF
 	    "enabled": true,
 	    "head_sampling_rate": 1,
 	    "persist": true,
-	    "invocation_logs": true
+	    "invocation_logs": true${OBSERVABILITY_LOGS_DESTINATIONS_ENTRY}
 	  },
 	  "traces": {
 	    "enabled": true,
 	    "persist": true,
-	    "head_sampling_rate": 1
+	    "head_sampling_rate": 1${OBSERVABILITY_TRACES_DESTINATIONS_ENTRY}
 	  }
 	},
 ${WRANGLER_COMPATIBILITY_FLAGS_INDENT}"compatibility_flags": ["nodejs_compat"],
@@ -525,6 +601,10 @@ ${WRANGLER_COMPATIBILITY_FLAGS_INDENT}"compatibility_flags": ["nodejs_compat"],
 		"REPOSITORY_URL": "${CURRENT_REPOSITORY_URL}",
 		"REGISTRATION_MODE": "${CURRENT_REG}",
 		"SKIP_SIGNATURE_VERIFICATION": ${CURRENT_SKIP_SIGNATURE_VERIFICATION},
+		// Verbose debug logging (full federation request/response payloads,
+		// per-request user activity). Ultra-sensitive values (private keys,
+		// passwords, tokens) are always redacted. Off unless exactly true.
+		"DEBUG": ${CURRENT_DEBUG},
 		"WORKERS_AI_ENABLED": ${CURRENT_WORKERS_AI_ENABLED},
 		"WORKERS_AI_RECOMMENDATION_MODEL": "${CURRENT_WORKERS_AI_RECOMMENDATION_MODEL}",
 		"WORKERS_AI_TRANSLATION_MODEL": "${CURRENT_WORKERS_AI_TRANSLATION_MODEL}",
@@ -639,7 +719,11 @@ cat > "$CONSUMER_DIR/wrangler.jsonc" << WRANGLER_EOF
 	"vars": {
 		"INSTANCE_DOMAIN": "${CURRENT_DOMAIN}",
 		"REPOSITORY_URL": "${CURRENT_REPOSITORY_URL}",
-		"SKIP_SIGNATURE_VERIFICATION": ${CURRENT_SKIP_SIGNATURE_VERIFICATION}
+		"SKIP_SIGNATURE_VERIFICATION": ${CURRENT_SKIP_SIGNATURE_VERIFICATION},
+		// Verbose debug logging (full federation request/response payloads).
+		// Ultra-sensitive values (private keys, passwords, tokens) are always
+		// redacted. Off unless exactly true.
+		"DEBUG": ${CURRENT_DEBUG}
 	},
 	// D1 Database
 	"d1_databases": [
