@@ -4,6 +4,7 @@ import {
   buildRecommendationInterestQuery,
   continueRecommendedTimelinePage,
   createRecommendedTimelinePage,
+  describeRecommendationGenerationFailure,
   rankRecommendationCandidates,
   RECOMMENDATION_CANDIDATE_LIMIT,
   RECOMMENDATION_DEFAULT_PAGE_LIMIT,
@@ -540,6 +541,7 @@ describe('AI recommended timeline', () => {
       'throwing-model',
     )).rejects.toMatchObject<Partial<RecommendationGenerationError>>({
       code: 'AI_RECOMMENDATION_FAILED',
+      reason: 'model unavailable',
     });
 
     await expect(createRecommendedTimelinePage(
@@ -551,6 +553,17 @@ describe('AI recommended timeline', () => {
     )).rejects.toMatchObject<Partial<RecommendationGenerationError>>({
       code: 'AI_RECOMMENDATION_FAILED',
     });
+  });
+
+  it('keeps the provider HTTP status, code, and reason without exposing a stack', () => {
+    const failure = Object.assign(
+      new Error('Capacity temporarily exceeded, please try again.'),
+      { status: 429, code: 3040 },
+    );
+
+    expect(describeRecommendationGenerationFailure(failure)).toBe(
+      'HTTP 429\ncode: 3040\nCapacity temporarily exceeded, please try again.',
+    );
   });
 
   it('fails instead of truncating a non-exhausted feed when cursor storage fails', async () => {
@@ -943,6 +956,56 @@ describe('AI recommended timeline', () => {
       });
       expect(limit).toHaveBeenCalledWith({ key: viewer.accountId });
       expect(run).not.toHaveBeenCalled();
+    } finally {
+      for (const entry of previous) {
+        if (entry.hadValue) bindings[entry.name] = entry.value;
+        else Reflect.deleteProperty(bindings, entry.name);
+      }
+    }
+  });
+
+  it('returns the temporary provider failure reason from the endpoint', async () => {
+    const bindings = env as unknown as Record<string, unknown>;
+    const names = [
+      'WORKERS_AI_ENABLED',
+      'WORKERS_AI_RATE_LIMITS',
+      'AI',
+    ] as const;
+    const previous = names.map((name) => ({
+      name,
+      hadValue: Object.prototype.hasOwnProperty.call(bindings, name),
+      value: bindings[name],
+    }));
+    bindings.WORKERS_AI_ENABLED = true;
+    bindings.WORKERS_AI_RATE_LIMITS = false;
+    bindings.AI = {
+      run: async () => {
+        throw Object.assign(
+          new Error('Capacity temporarily exceeded, please try again.'),
+          { status: 429, code: 3040 },
+        );
+      },
+    };
+
+    try {
+      await cacheWorkersAiFeatureFlags({
+        workers_ai_recommendation_enabled: '1',
+        workers_ai_translation_enabled: '0',
+        workers_ai_image_description_enabled: '0',
+      }, bindings);
+
+      const response = await SELF.fetch(`${BASE}/api/v1/timelines/recommended`, {
+        method: 'POST',
+        headers: authHeaders(viewer.token),
+      });
+
+      expect(response.status).toBe(503);
+      expect(await response.json()).toMatchObject({
+        error: 'AI recommendation could not be generated',
+        error_code: 'AI_RECOMMENDATION_FAILED',
+        error_description:
+          'HTTP 429\ncode: 3040\nCapacity temporarily exceeded, please try again.',
+      });
     } finally {
       for (const entry of previous) {
         if (entry.hadValue) bindings[entry.name] = entry.value;
