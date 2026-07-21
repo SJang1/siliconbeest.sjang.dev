@@ -4,7 +4,7 @@
 	"preview_urls": false,
 	"compatibility_date": "2026-06-16",
 	// Nuxt emits the production Cloudflare Worker entrypoint during `pnpm run build`.
-	"main": ".output/server/index.mjs",
+	"main": "server/index.ts",
 	// Emit source maps in the deploy bundle (Cloudflare-native readable traces;
 	// CI also uploads them to Sentry when SENTRY_AUTH_TOKEN is configured).
 	"upload_source_maps": true,

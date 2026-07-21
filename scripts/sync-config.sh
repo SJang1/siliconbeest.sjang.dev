@@ -681,7 +681,10 @@ ${WORKERS_AI_BINDING_BLOCK}
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_classes": ["StreamingDO"]
+			// SQLite-backed: new accounts can no longer create KV-backed DO
+			// namespaces (API error 10099). Already-deployed workers keep their
+			// existing backend — applied migration tags are never re-run.
+			"new_sqlite_classes": ["StreamingDO"]
 		}
 	],
 
@@ -695,6 +698,19 @@ ${WORKERS_AI_BINDING_BLOCK}
 }
 WRANGLER_EOF
 success "Unified worker config written"
+
+# --- Typegen variant (wrangler.typegen.jsonc) ---
+# Same config with the entrypoint swapped to the TS source: `wrangler types`
+# resolves exported Durable Object classes from `main`, and the Nitro-built
+# .output entrypoint does not exist before `pnpm run build`.
+if ! grep -qF '"main": ".output/server/index.mjs"' "$MAIN_DIR/wrangler.jsonc"; then
+  error "Runtime entrypoint not found in $MAIN_DIR/wrangler.jsonc — update the typegen derivation below to match"
+  exit 1
+fi
+info "Writing $MAIN_DIR/wrangler.typegen.jsonc"
+sed 's|"main": ".output/server/index.mjs"|"main": "server/index.ts"|' \
+  "$MAIN_DIR/wrangler.jsonc" > "$MAIN_DIR/wrangler.typegen.jsonc"
+success "Typegen config written"
 
 # --- Queue Consumer wrangler.jsonc ---
 info "Writing $CONSUMER_DIR/wrangler.jsonc"
